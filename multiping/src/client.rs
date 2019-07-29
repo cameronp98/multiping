@@ -35,8 +35,5 @@ impl<'a> Client<'a> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn client() {
-        assert!(false);
-    }
+    
 }

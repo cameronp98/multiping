@@ -96,8 +96,5 @@ fn handle_client(mut stream: TcpStream) -> JobResult {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn server() {
-        assert!(false);
-    }
+    
 }

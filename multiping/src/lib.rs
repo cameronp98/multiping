@@ -15,8 +15,5 @@ pub use server::Server;
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn core() {
-        assert!(false);
-    }
+    
 }
