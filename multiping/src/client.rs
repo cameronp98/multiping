@@ -34,6 +34,4 @@ impl<'a> Client<'a> {
 }
 
 #[cfg(test)]
-mod tests {
-    
-}
+mod tests {}

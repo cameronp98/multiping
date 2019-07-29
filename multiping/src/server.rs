@@ -96,6 +96,4 @@ fn handle_client(mut stream: TcpStream) -> JobResult {
 }
 
 #[cfg(test)]
-mod tests {
-    
-}
+mod tests {}

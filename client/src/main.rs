@@ -12,6 +12,9 @@ fn main() {
     // let resp = client.send(Message::Ping).unwrap();
     println!("{:?}", client.send(Message::Pong));
     println!("{:?}", client.send(Message::Ping));
-    println!("{:?}", client.send(Message::Text(String::from("Hello, World!"))));
+    println!(
+        "{:?}",
+        client.send(Message::Text(String::from("Hello, World!")))
+    );
     println!("{:?}", client.send(Message::InvalidRequest));
 }

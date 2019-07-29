@@ -15,6 +15,4 @@ pub use message::Message;
 pub use server::Server;
 
 #[cfg(test)]
-mod tests {
-    
-}
+mod tests {}
