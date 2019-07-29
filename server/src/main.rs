@@ -8,5 +8,5 @@ fn main() {
 
     debug!("Server main:");
 
-    Server::bind("127.0.0.1:3000").unwrap().run();
+    Server::new().run("127.0.0.1:3000").unwrap();
 }

@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use crate::Result;
 
 /// A message that can be sent and received over a stream
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum Message {
     Ping,
-    Pong,
     Text(String),
     InvalidRequest,
+    Disconnect,
 }
 
 impl Message {
