@@ -24,7 +24,6 @@ impl Server {
     pub fn bind(addr: &str) -> Result<Server> {
         debug!("Creating listener on {}...", addr);
         let listener = TcpListener::bind(addr)?;
-        debug!("Listener created.");
 
         Ok(Server {
             handles: Arc::new(Mutex::new(Vec::new())),
@@ -42,10 +41,10 @@ impl Server {
         for stream in self.listener.incoming() {
             match stream {
                 Ok(s) => {
+                    debug!("Spawning client handler thread.");
                     let handle = thread::spawn(|| handle_client(s));
-                    debug!("Client handler thread spawned.");
+                    debug!("Aquiring lock and saving thread handle...");
                     self.handles.lock().unwrap().push(Some(handle));
-                    debug!("Thread handle stored.");
                 }
                 Err(e) => warn!("Error on incoming stream: {:?}", e),
             }
@@ -78,7 +77,6 @@ fn handle_client(mut stream: TcpStream) -> JobResult {
     // read the message
     debug!("Reading message...");
     let msg = Message::read(&mut stream)?;
-    debug!("Message read.");
 
     // process the message
     debug!("Processing message...");
@@ -86,12 +84,10 @@ fn handle_client(mut stream: TcpStream) -> JobResult {
         Message::Ping => Message::Pong,
         _ => Message::InvalidRequest,
     };
-    debug!("Message processed.");
 
     // write the message and flush it to allow the client to begin reading
     debug!("Sending response...");
     resp.write(&mut stream)?;
-    debug!("Response sent.");
 
     debug!("Client handled successfully.");
 

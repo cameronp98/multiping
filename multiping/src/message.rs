@@ -21,7 +21,6 @@ impl Message {
         // Serialize the message as JSON
         debug!("Serializing message...");
         let json = serde_json::to_string(&self)?;
-        debug!("Message serialized.");
 
         // Write the JSON followed by a newline
         debug!("Writing bytes + newline...");
@@ -29,7 +28,6 @@ impl Message {
         writeln!(writer)?;
         debug!("Bytes + newline written. Flushing...");
         writer.flush()?;
-        debug!("Flushed.");
 
         debug!("Message sent succesfully.");
 
@@ -46,12 +44,10 @@ impl Message {
         let mut json = String::new();
         debug!("Reading a line...");
         buf.read_line(&mut json)?;
-        debug!("Line read.");
 
         // Deserialize message from JSON
         debug!("Deserializing message...");
         let msg = serde_json::from_str(&json)?;
-        debug!("Deserialized.");
 
         debug!("Message read successfully.");
 

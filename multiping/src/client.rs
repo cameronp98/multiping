@@ -21,12 +21,10 @@ impl<'a> Client<'a> {
         // connect to the server
         debug!("Connecting to server...");
         let mut stream = TcpStream::connect(self.server_addr)?;
-        debug!("Connected to server.");
 
         // write the message and flush to allow the server to begin reading
         debug!("Writing message...");
         msg.write(&mut stream)?;
-        debug!("Message sent.");
 
         // read the response from the server
         let resp = Some(Message::read(&mut stream)?);
