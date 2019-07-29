@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "multiping",
+    "client",
+    "server",
+]
