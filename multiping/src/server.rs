@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 
 use crate::error::{Error, Result};
@@ -27,6 +27,11 @@ impl Server {
         }
     }
 
+    pub fn clients(&mut self) -> MutexGuard<RemoteClients> {
+        debug!("Acquiring lock on RemoteClients...");
+        self.clients.lock().unwrap()
+    }
+
     /// Spawn a new thread to listen for connections
     pub fn run(&mut self, addr: &str) -> Result<()> {
         debug!("Running server on {}...", addr);
@@ -42,9 +47,11 @@ impl Server {
         self.listener = Some(thread::spawn(move || {
             // Spawn a thread for each incoming connection
             for stream in listener.incoming() {
+                debug!("New connection {:?}", stream);
                 match stream {
                     Ok(s) => {
                         // Create the `RemoteClient`
+                        debug!("Createing remote client...");
                         clients.lock().unwrap().create_client(s, sender.clone());
                     }
                     Err(e) => {
@@ -64,12 +71,12 @@ impl Server {
                         Message::Ping | Message::Text(_) => {
                             // distribute the message to the other clients
                             debug!("Distributing message {:?}...", msg);
-                            self.clients.lock().unwrap().distribute(msg, id);
+                            self.clients().distribute(msg, id);
                         }
                         Message::Disconnect => {
                             // disconnect the client that sent the message
                             debug!("Disconnecting client {}...", id);
-                            self.clients.lock().unwrap().disconnect(id)?;
+                            self.clients().disconnect(id)?;
                         }
                         _ => panic!("Unexpected message {:?}", msg),
                     }
@@ -104,7 +111,7 @@ impl std::ops::Drop for Server {
         }
 
         debug!("Terminating all clients...");
-        match self.clients.lock().unwrap().disconnect_all() {
+        match self.clients().disconnect_all() {
             Ok(_) => debug!("Success."),
             Err(e) => error!("Error terminating all clients: {:?}", e),
         }
@@ -141,9 +148,15 @@ impl RemoteClients {
         debug!("Client id: {}", id);
 
         let client = RemoteClient::new(id, stream, serv_sender);
-        self.clients.lock().unwrap().insert(id, client).unwrap();
+        debug!("Acquiring logn and inserting client...");
+        self.clients().insert(id, client).unwrap();
 
         id
+    }
+
+    fn clients(&mut self) -> MutexGuard<HashMap<RemoteClientId, RemoteClient>> {
+        debug!("Acquiring lock on clients...");
+        self.clients.lock().unwrap()
     }
 
     fn distribute(&mut self, msg: Message, source: RemoteClientId) {
@@ -151,7 +164,7 @@ impl RemoteClients {
 
         let mut dead_clients = Vec::new();
 
-        for (&id, client) in self.clients.lock().unwrap().iter_mut() {
+        for (&id, client) in self.clients().iter_mut() {
             // don't send to the source client
             if id == source {
                 continue;
@@ -191,7 +204,7 @@ impl RemoteClients {
     fn disconnect_all(&mut self) -> Result<()> {
         debug!("Terminating all remote clients...");
 
-        for (id, client) in self.clients.lock().unwrap().drain() {
+        for (id, client) in self.clients().drain() {
             debug!("Disconnecting client {}...", id);
             client.disconnect()?;
         }
@@ -219,9 +232,12 @@ impl RemoteClient {
         serv_sender: Sender<(RemoteClientId, Message)>,
     ) -> RemoteClient {
         debug!("Creating remote client {}...", id);
+
         let (sender, receiver) = channel::<Message>();
 
         let handle = thread::spawn(move || {
+            debug!("Spawned client thread...");
+
             'thread: loop {
                 // Read all pending messages from the server
                 while let Ok(msg) = receiver.try_recv() {
