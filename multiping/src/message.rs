@@ -15,7 +15,7 @@ pub enum Message {
 
 impl Message {
     /// Encode the message as JSON and send it down the stream
-    pub fn write<W: Write>(self, writer: &mut W) -> Result<()> {
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
         debug!("Sending message:");
 
         // Serialize the message as JSON
