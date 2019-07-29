@@ -26,7 +26,7 @@ impl Message {
         debug!("Writing bytes + newline...");
         writer.write_all(json.as_bytes())?;
         writeln!(writer)?;
-        debug!("Bytes + newline written. Flushing...");
+        debug!("Flushing...");
         writer.flush()?;
 
         debug!("Message sent succesfully.");
