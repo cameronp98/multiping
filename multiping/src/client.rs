@@ -15,7 +15,7 @@ impl<'a> Client<'a> {
     }
 
     /// Send a message to the server and return the response
-    pub fn send(&self, msg: Message) -> Result<Option<Message>> {
+    pub fn send(&self, msg: Message) -> Result<Message> {
         debug!("Sending message:");
 
         // connect to the server
@@ -27,7 +27,7 @@ impl<'a> Client<'a> {
         msg.write(&mut stream)?;
 
         // read the response from the server
-        let resp = Some(Message::read(&mut stream)?);
+        let resp = Message::read(&mut stream)?;
 
         Ok(resp)
     }
