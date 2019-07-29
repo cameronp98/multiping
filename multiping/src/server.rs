@@ -51,11 +51,11 @@ impl Server {
                 match stream {
                     Ok(s) => {
                         // Create the `RemoteClient`
-                        debug!("Createing remote client...");
+                        debug!("Creating remote client...");
                         clients.lock().unwrap().create_client(s, sender.clone());
                     }
                     Err(e) => {
-                        warn!("Error on incoming stream: {:?}", e);
+                        warn!("Error on incoming stream: {}", e);
                     }
                 }
             }
@@ -83,7 +83,7 @@ impl Server {
                 }
                 Err(e) => {
                     // failed to `recv` a message, all senders are dead
-                    error!("Error whilst receiving message: {:?}", e);
+                    error!("Error whilst receiving message: {}", e);
                     break;
                 }
             }
@@ -113,7 +113,7 @@ impl std::ops::Drop for Server {
         debug!("Terminating all clients...");
         match self.clients().disconnect_all() {
             Ok(_) => debug!("Success."),
-            Err(e) => error!("Error terminating all clients: {:?}", e),
+            Err(e) => error!("Error terminating all clients: {}", e),
         }
     }
 }
@@ -175,7 +175,7 @@ impl RemoteClients {
             match client.send(msg.clone()) {
                 Ok(_) => debug!("Ok."),
                 Err(e) => {
-                    warn!("Found dead client {}: {:?}", id, e);
+                    warn!("Found dead client {}: {}", id, e);
                     dead_clients.push(id);
                 }
             }
@@ -245,7 +245,7 @@ impl RemoteClient {
                     debug!("Forwarding...");
 
                     if let Err(err) = msg.write(&mut stream) {
-                        error!("Error whilst forwarding message: {:?}", err);
+                        error!("Error whilst forwarding message: {}", err);
                     }
 
                     // exit the loop on disconnect
@@ -259,11 +259,11 @@ impl RemoteClient {
                     Ok(msg) => {
                         debug!("Got message {:?}", msg);
                         if let Err(e) = serv_sender.send((id, msg)) {
-                            error!("Failed to send message: {:?}", e);
+                            error!("Failed to send message: {}", e);
                         }
                     }
                     Err(e) => {
-                        error!("Error reading message from stream: {:?}", e);
+                        error!("Error reading message from stream: {}", e);
                     }
                 }
             }
@@ -276,7 +276,7 @@ impl RemoteClient {
         debug!("Sending message...");
 
         self.sender.send(msg).map_err(|e| {
-            error!("Error sending message: {:?}", e);
+            error!("Error sending message: {}", e);
             Error::SendError
         })
     }
