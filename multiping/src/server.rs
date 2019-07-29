@@ -82,6 +82,7 @@ fn handle_client(mut stream: TcpStream) -> JobResult {
     debug!("Processing message...");
     let resp = match msg {
         Message::Ping => Message::Pong,
+        Message::Text(text) => Message::Text(crate::util::reverse(text)),
         _ => Message::InvalidRequest,
     };
 

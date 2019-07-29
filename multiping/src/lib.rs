@@ -7,6 +7,7 @@ mod client;
 mod error;
 mod message;
 mod server;
+mod util;
 
 pub use client::Client;
 pub use error::{Error, Result};
