@@ -9,7 +9,7 @@ use crate::Result;
 pub enum Message {
     Ping,
     Text(String),
-    InvalidRequest,
+    InvalidMessage,
     Disconnect,
 }
 
