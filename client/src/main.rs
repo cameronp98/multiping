@@ -10,5 +10,8 @@ fn main() {
 
     let client = Client::new("127.0.0.1:3000");
     // let resp = client.send(Message::Ping).unwrap();
-    println!("{:?}", client.send(Message::Ping));
+    match client.send(Message::Ping) {
+        Ok(_) => println!("Message sent."),
+        Err(e) => error!("Error: {}", e),
+    }
 }
