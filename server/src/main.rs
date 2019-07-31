@@ -8,7 +8,7 @@ use multiping::Server;
 fn main() {
     env_logger::init();
 
-    debug!("Server main:");
+    debug!("parse cli args");
 
     let matches = App::new("Multiping Server")
         .arg(
@@ -17,18 +17,21 @@ fn main() {
                 .long("address")
                 .help("Sets the adress to bind the server to")
                 .takes_value(true)
-                .required(true)
+                .required(true),
         )
         .get_matches();
 
+    debug!("cli args parsed successfully");
+
     let addr = matches.value_of("address").unwrap();
 
+    debug!("run server");
     match Server::new().run(addr) {
         Ok(()) => {
-            info!("Server exited successfully.");
-        },
+            info!("server exited successfully.");
+        }
         Err(e) => {
-            error!("Error whilst running server: {}", e);
+            error!("failed to run server: {}", e);
         }
     }
 }

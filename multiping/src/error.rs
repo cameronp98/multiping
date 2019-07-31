@@ -1,8 +1,8 @@
 use std::fmt;
 use std::io;
-use std::sync::mpsc::RecvError;
 
-use crate::server::RemoteClientId;
+use crate::connection::ConnectionId;
+use crate::Message;
 
 /// The `Result` subtype for this crate
 pub type Result<T> = std::result::Result<T, Error>;
@@ -12,10 +12,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     IoError(io::Error),
     JsonError(serde_json::Error),
-    RecvError(RecvError),
+    SenderDisconnected,
+    ReceiverDisconnected,
     SendError,
-    JoinError,
-    InvalidRemoteClientId(RemoteClientId),
+    ThreadJoinError,
+    InvalidConnectionId(ConnectionId),
+    MutexLockError,
+    UnexpectedMessage(Message),
 }
 
 impl fmt::Display for Error {
@@ -23,12 +26,13 @@ impl fmt::Display for Error {
         match self {
             Error::IoError(e) => e.fmt(f),
             Error::JsonError(e) => e.fmt(f),
-            Error::RecvError(e) => e.fmt(f),
-            Error::SendError => write!(f, "SendError"),
-            Error::JoinError => write!(f, "JoinError"),
-            Error::InvalidRemoteClientId(id) => {
-                f.debug_tuple("InvalidRemoteClientId").field(id).finish()
-            }
+            Error::SenderDisconnected => write!(f, "recv failed: sender disconnected"),
+            Error::SendError => write!(f, "failed to send on a channel"),
+            Error::ThreadJoinError => write!(f, "failed to join a thread"),
+            Error::MutexLockError => write!(f, "failed to lock mutex"),
+            Error::InvalidConnectionId(id) => write!(f, "invalid client id {}", id),
+            Error::ReceiverDisconnected => write!(f, "recv failed: receiver disconnected"),
+            Error::UnexpectedMessage(msg) => write!(f, "unexpected message: {}", msg),
         }
     }
 }
@@ -42,11 +46,5 @@ impl From<io::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Error {
         Error::JsonError(err)
-    }
-}
-
-impl From<RecvError> for Error {
-    fn from(err: RecvError) -> Error {
-        Error::RecvError(err)
     }
 }

@@ -16,18 +16,18 @@ impl<'a> Client<'a> {
 
     /// Send a message to the server and return the response
     pub fn send(&self, msg: Message) -> Result<Message> {
-        debug!("Sending message:");
+        debug!("Message::send({})", msg);
 
         // connect to the server
-        debug!("Connecting to server...");
+        debug!("connect to server");
         let mut stream = TcpStream::connect(self.server_addr)?;
 
         // write the message and flush to allow the server to begin reading
-        debug!("Writing message...");
+        debug!("write to stream");
         msg.write(&mut stream)?;
 
         // read the response from the server
-        let resp = Message::read(&mut stream)?;
+        let resp = Message::recv(&mut stream)?;
 
         Ok(resp)
     }

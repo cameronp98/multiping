@@ -1,35 +1,35 @@
 //! Core server stuff
 
-use std::collections::HashMap;
-use std::net::{TcpListener, TcpStream};
-use std::sync::mpsc::{channel, Sender};
+use std::net::TcpListener;
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 
+use crate::connection::ConnectionRegistry;
 use crate::error::{Error, Result};
 use crate::message::Message;
 
 /// The multiping server
 #[derive(Debug)]
 pub struct Server {
-    listener: Option<JoinHandle<()>>,
-    clients: Arc<Mutex<RemoteClients>>,
+    listener: Option<JoinHandle<Result<()>>>,
+    connections: Arc<Mutex<ConnectionRegistry>>,
 }
 
 impl Server {
     /// Create a server and bind it to the given address
     pub fn new() -> Server {
-        debug!("Creating server...");
+        debug!("create server");
 
         Server {
             listener: None,
-            clients: Arc::new(Mutex::new(RemoteClients::new())),
+            connections: Arc::new(Mutex::new(ConnectionRegistry::new())),
         }
     }
 
-    pub fn clients(&mut self) -> MutexGuard<RemoteClients> {
-        debug!("Acquiring lock on RemoteClients...");
-        self.clients.lock().unwrap()
+    pub fn connections(&mut self) -> MutexGuard<ConnectionRegistry> {
+        debug!("acquire lock on client registry");
+        self.connections.lock().expect("mutex poisoned")
     }
 
     /// Spawn a new thread to listen for connections
@@ -38,52 +38,56 @@ impl Server {
 
         println!("Server running on {}", addr);
 
-        let (sender, receiver) = channel();
+        let (msg_tx, msg_rx) = channel();
 
         let listener = TcpListener::bind(addr)?;
-        let clients = self.clients.clone();
+        let conns = self.connections.clone();
 
         // spawn listener thread
         self.listener = Some(thread::spawn(move || {
             // Spawn a thread for each incoming connection
             for stream in listener.incoming() {
-                debug!("New connection {:?}", stream);
+                info!("new incoming connection");
                 match stream {
                     Ok(s) => {
-                        // Create the `RemoteClient`
-                        debug!("Creating remote client...");
-                        clients.lock().unwrap().create_client(s, sender.clone());
+                        // Add the client to the registry
+                        debug!("lock client registry and register new connection");
+                        conns.lock().expect("mutex poisoned").add(s, msg_tx.clone());
                     }
                     Err(e) => {
-                        warn!("Error on incoming stream: {}", e);
+                        warn!("failed to accept connection: {}", e);
                     }
                 }
             }
+
+            Ok(())
         }));
 
         loop {
-            // Read messages brought sent in from our `RemoteClient`s
-            debug!("Receiving a message from remote clients...");
+            // Read messages received from all connections
+            debug!("wait for queued message from client handlers");
 
-            match receiver.recv() {
+            match msg_rx.recv() {
                 Ok((id, msg)) => {
+                    debug!("received message from client {}: {}", id, msg);
+
                     match msg {
                         Message::Ping | Message::Text(_) => {
                             // distribute the message to the other clients
-                            debug!("Distributing message {:?}...", msg);
-                            self.clients().distribute(msg, id);
+                            if let Err(e) = self.connections().forward_to_all(msg, id) {
+                                error!("failed to forward message to all connections: {}", e);
+                            }
                         }
                         Message::Disconnect => {
-                            // disconnect the client that sent the message
-                            debug!("Disconnecting client {}...", id);
-                            self.clients().disconnect(id)?;
+                            // disconnect the connection that produced the message
+                            self.connections().disconnect(id)?;
                         }
-                        _ => panic!("Unexpected message {:?}", msg),
+                        _ => return Err(Error::UnexpectedMessage(msg)),
                     }
                 }
                 Err(e) => {
                     // failed to `recv` a message, all senders are dead
-                    error!("Error whilst receiving message: {}", e);
+                    error!("error whilst receiving message: {}", e);
                     break;
                 }
             }
@@ -102,193 +106,26 @@ impl Default for Server {
 impl std::ops::Drop for Server {
     /// Try and close the connection or error
     fn drop(&mut self) {
-        debug!("Dropping server:");
+        debug!("drop server");
 
         // @TODO implement messaging for listener so it can't hang
         if let Some(listener) = self.listener.take() {
-            debug!("Joining listener thread.");
-            listener.join().unwrap();
-        }
-
-        debug!("Terminating all clients...");
-        match self.clients().disconnect_all() {
-            Ok(_) => debug!("Success."),
-            Err(e) => error!("Error terminating all clients: {}", e),
-        }
-    }
-}
-
-/// Unique identifier for a `RemoteClient` generated by`RemoteClients.create_client()`
-pub type RemoteClientId = usize;
-
-/// A collection of remote clients
-#[derive(Debug)]
-pub struct RemoteClients {
-    next_id: RemoteClientId,
-    clients: Arc<Mutex<HashMap<RemoteClientId, RemoteClient>>>,
-}
-
-impl RemoteClients {
-    fn new() -> RemoteClients {
-        RemoteClients {
-            next_id: 0,
-            clients: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    fn create_client(
-        &mut self,
-        stream: TcpStream,
-        serv_sender: Sender<(RemoteClientId, Message)>,
-    ) -> RemoteClientId {
-        debug!("Creating a client...");
-
-        let id = self.next_id;
-        self.next_id += 1;
-        debug!("Client id: {}", id);
-
-        let client = RemoteClient::new(id, stream, serv_sender);
-        debug!("Acquiring logn and inserting client...");
-        self.clients().insert(id, client).unwrap();
-
-        id
-    }
-
-    fn clients(&mut self) -> MutexGuard<HashMap<RemoteClientId, RemoteClient>> {
-        debug!("Acquiring lock on clients...");
-        self.clients.lock().unwrap()
-    }
-
-    fn distribute(&mut self, msg: Message, source: RemoteClientId) {
-        debug!("Sending to all clients {:?}...", msg);
-
-        let mut dead_clients = Vec::new();
-
-        for (&id, client) in self.clients().iter_mut() {
-            // don't send to the source client
-            if id == source {
-                continue;
-            }
-
-            // try and send to the client, or mark it as dead
-            debug!("Sending message.");
-            match client.send(msg.clone()) {
-                Ok(_) => debug!("Ok."),
-                Err(e) => {
-                    warn!("Found dead client {}: {}", id, e);
-                    dead_clients.push(id);
-                }
+            debug!("join listener thread");
+            match listener.join() {
+                Ok(res) => match res {
+                    Ok(()) => debug!("listener joined"),
+                    Err(err) => debug!("error in listener thread: {}", err),
+                },
+                Err(_) => error!("error joining listener"),
             }
         }
 
-        for id in dead_clients {
-            debug!("Removing dead client {}", id);
-            let _ = self.remove(id).unwrap();
+        debug!("disconnect all connections");
+
+        match self.connections().disconnect_all() {
+            Ok(_) => debug!("all connections disconnected successfully"),
+            Err(e) => error!("error disconnecting all clients: {}", e),
         }
-    }
-
-    fn remove(&mut self, id: RemoteClientId) -> Result<RemoteClient> {
-        debug!("Removing client {}...", id);
-        self.clients
-            .lock()
-            .unwrap()
-            .remove(&id)
-            .ok_or(Error::InvalidRemoteClientId(id))
-    }
-
-    fn disconnect(&mut self, id: RemoteClientId) -> Result<()> {
-        debug!("Terminating client {}...", id);
-        self.remove(id).and_then(|client| client.disconnect())
-    }
-
-    fn disconnect_all(&mut self) -> Result<()> {
-        debug!("Terminating all remote clients...");
-
-        for (id, client) in self.clients().drain() {
-            debug!("Disconnecting client {}...", id);
-            client.disconnect()?;
-        }
-
-        Ok(())
-    }
-}
-
-/// Remote client
-///
-/// * `handle` - A handle to the worker thread
-/// * `sender` - The `Sender` used to send `RemoteClientMessage`s to the worker thread
-#[derive(Debug)]
-struct RemoteClient {
-    id: RemoteClientId,
-    handle: JoinHandle<()>,
-    sender: Sender<Message>,
-}
-
-impl RemoteClient {
-    /// Create a new client with a queue to send responses to
-    fn new(
-        id: RemoteClientId,
-        mut stream: TcpStream,
-        serv_sender: Sender<(RemoteClientId, Message)>,
-    ) -> RemoteClient {
-        debug!("Creating remote client {}...", id);
-
-        let (sender, receiver) = channel::<Message>();
-
-        let handle = thread::spawn(move || {
-            debug!("Spawned client thread...");
-
-            'thread: loop {
-                // Read all pending messages from the server
-                while let Ok(msg) = receiver.try_recv() {
-                    debug!("Received message from server: {:?}...", msg);
-                    debug!("Forwarding...");
-
-                    if let Err(err) = msg.write(&mut stream) {
-                        error!("Error whilst forwarding message: {}", err);
-                    }
-
-                    // exit the loop on disconnect
-                    if let Message::Disconnect = msg {
-                        break 'thread;
-                    }
-                }
-
-                // Read a message from the client and send it back to the server
-                match Message::read(&mut stream) {
-                    Ok(msg) => {
-                        debug!("Got message {:?}", msg);
-                        if let Err(e) = serv_sender.send((id, msg)) {
-                            error!("Failed to send message: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Error reading message from stream: {}", e);
-                    }
-                }
-            }
-        });
-
-        RemoteClient { id, handle, sender }
-    }
-
-    fn send(&mut self, msg: Message) -> Result<()> {
-        debug!("Sending message...");
-
-        self.sender.send(msg).map_err(|e| {
-            error!("Error sending message: {}", e);
-            Error::SendError
-        })
-    }
-
-    fn disconnect(mut self) -> Result<()> {
-        debug!("Stopping client...");
-
-        debug!("Requesting termination...");
-        self.send(Message::Disconnect)?;
-
-        debug!("Joining thread...");
-        self.handle.join().map_err(|_| Error::JoinError)
     }
 }
 
